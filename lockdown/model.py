@@ -68,7 +68,13 @@ class SecureModel(peewee.Model):
                 only = []
             for field in self._meta.get_fields():
                 if self.is_field_writeable(field):
-                    only.append(field)
+                    validation_fn = rules.field_validation.get(field)
+                    if validation_fn:
+                        value = getattr(self, field.name, None)
+                        if validation_fn(self, field, value):
+                            only.append(field)
+                    else:
+                        only.append(field)
 
         return super(SecureModel, self).save(force_insert, only)
 
