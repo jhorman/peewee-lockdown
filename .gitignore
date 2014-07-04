@@ -1,0 +1,13 @@
+venv/*
+*.pyc
+.*~
+*.*~
+*.pid
+*.bak
+tmp
+.DS_Store
+.idea/*
+.pycharm
+.bundle
+.projectile
+.backups
