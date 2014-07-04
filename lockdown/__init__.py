@@ -5,3 +5,7 @@ from lockdown.role import Role
 
 class SecurityContext(object):
     pass
+
+
+class LockdownException(Exception):
+    pass

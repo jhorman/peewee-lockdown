@@ -3,6 +3,7 @@ from __future__ import absolute_import
 from playhouse.test_utils import test_database
 from lockdown import Role
 from lockdown.context import ContextParam, context
+from lockdown.rules import NO_ONE
 from tests import test_db, Bicycle, User, Group
 
 
@@ -33,8 +34,8 @@ def test_readable_writable():
     context.group = None
 
     rest_api = Role('rest_api')
-    ldown = rest_api.lockdown(Bicycle)\
-        .readable_by(Bicycle.group == ContextParam('group'))\
+    ldown = rest_api.lockdown(Bicycle) \
+        .readable_by(Bicycle.group == ContextParam('group')) \
         .writeable_by(Bicycle.owner == ContextParam('user'))
 
     with test_database(test_db, [User, Group, Bicycle]):
@@ -73,8 +74,8 @@ def test_is_readable_writable_field():
     context.group = None
 
     rest_api = Role('rest_api')
-    ldown = rest_api.lockdown(Bicycle)\
-        .field_readable_by(Bicycle.serial, Bicycle.group == ContextParam('group'))\
+    rest_api.lockdown(Bicycle) \
+        .field_readable_by(Bicycle.serial, Bicycle.group == ContextParam('group')) \
         .field_writeable_by(Bicycle.serial, Bicycle.owner == ContextParam('user'))
 
     with test_database(test_db, [User, Group, Bicycle]):
@@ -110,8 +111,8 @@ def test_save():
     context.group = None
 
     rest_api = Role('rest_api')
-    ldown = rest_api.lockdown(Bicycle)\
-        .field_readable_by(Bicycle.serial, Bicycle.group == ContextParam('group'))\
+    rest_api.lockdown(Bicycle) \
+        .field_readable_by(Bicycle.serial, Bicycle.group == ContextParam('group')) \
         .field_writeable_by(Bicycle.serial, Bicycle.owner == ContextParam('user'))
 
     with test_database(test_db, [User, Group, Bicycle]):
@@ -139,3 +140,29 @@ def test_save():
         b.save()
         b = Bicycle.get()
         assert b.serial == '10'
+
+
+def test_no_one():
+    context.role = None
+    context.user = None
+    context.group = None
+
+    rest_api = Role('rest_api')
+    rest_api.lockdown(Bicycle).readable_by(NO_ONE).writeable_by(NO_ONE)
+
+
+    with test_database(test_db, [User, Group, Bicycle]):
+        u = User.create(username='test')
+        g = Group.create(name='test')
+        b = Bicycle.create(owner=u, group=g)
+
+        context.role = rest_api
+
+        assert b.is_readable() is False
+        assert b.is_writable() is False
+
+        context.group = g.id
+        context.user = u.id
+
+        assert b.is_readable() is False
+        assert b.is_writable() is False
