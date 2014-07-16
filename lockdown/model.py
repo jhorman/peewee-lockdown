@@ -108,13 +108,13 @@ class SecureModel(peewee.Model):
     def prepared(self):
         super(SecureModel, self).prepared()
 
-        if not self.is_readable():
-            raise LockdownException('Model not readable in current context')
+        all_rules = context.get_rules(self.__class__)
+        if all_rules:
+            if not self.is_readable(all_rules):
+                raise LockdownException('Model not readable in current context')
 
-        rules = context.get_rules(self.__class__)
-        if rules:
             for field in self._meta.get_fields():
-                if field.name in self._data and not self.is_field_readable(field):
+                if field.name in self._data and not self.is_field_readable(field, all_rules):
                     del self._data[field.name]
 
     def delete_instance(self, recursive=False, delete_nullable=False):
