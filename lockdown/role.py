@@ -14,4 +14,13 @@ class Role(object):
         return rules
 
     def get_rules(self, model_class):
-        return self.rules.get(model_class)
+        return self.collect_rules(model_class, [])
+
+    def collect_rules(self, model_class, list):
+        rules = self.rules.get(model_class)
+        if rules:
+            list.append(rules)
+        if model_class.__base__:
+            self.collect_rules(model_class.__base__, list)
+        return list
+

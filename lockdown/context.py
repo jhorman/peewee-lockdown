@@ -7,7 +7,7 @@ class Context(threading.local):
     role = None
 
     def get_rules(self, model_class):
-        return self.role.get_rules(model_class) if self.role else None
+        return self.role.get_rules(model_class) if self.role else []
 
 
 context = Context()

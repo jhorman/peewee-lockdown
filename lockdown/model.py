@@ -8,72 +8,99 @@ from lockdown.rules import NO_ONE, EVERYONE
 
 
 class SecureModel(peewee.Model):
-    def is_readable(self):
-        rules = context.get_rules(self.__class__)
-        if rules and rules.read_rule:
-            return check_rule_expr(self, rules.read_rule)
+    def is_readable(self, all_rules=None):
+        if all_rules is None:
+            all_rules = context.get_rules(self.__class__)
+
+        for rules in all_rules:
+            if rules.read_rule and not check_rule_expr(self, rules.read_rule):
+                return False
+
         return True
 
-    def is_field_readable(self, field):
-        if self.is_readable():
-            rules = context.get_rules(self.__class__)
-            if rules:
-                field_rules = rules.field_read_rules.get(field)
-                if field_rules:
-                    return check_rule_expr(self, field_rules)
-            return True
-        return False
+    def is_field_readable(self, field, all_rules=None):
+        if all_rules is None:
+            all_rules = context.get_rules(self.__class__)
 
-    def is_writable(self):
-        if self.is_readable():
-            rules = context.get_rules(self.__class__)
-            if rules and rules.write_rule:
-                return check_rule_expr(self, rules.write_rule)
-            return True
-        return False
+        if not self.is_readable(all_rules):
+            return False
 
-    def is_field_writeable(self, field):
-        if self.is_field_readable(field) and self.is_writable():
-            rules = context.get_rules(self.__class__)
-            if rules:
-                field_rules = rules.field_write_rules.get(field)
-                if field_rules:
-                    return check_rule_expr(self, field_rules)
-            return True
-        return False
+        for rules in all_rules:
+            field_rules = rules.field_read_rules.get(field.name)
+            if field_rules and not check_rule_expr(self, field_rules):
+                return False
 
-    def is_deleteable(self):
-        if self.is_writable():
-            rules = context.get_rules(self.__class__)
-            if rules and rules.delete_rule:
-                return check_rule_expr(self, rules.delete_rule)
-            return True
-        return False
+        return True
+
+    def is_writable(self, all_rules=None):
+        if all_rules is None:
+            all_rules = context.get_rules(self.__class__)
+
+        if not self.is_readable(all_rules):
+            return False
+
+        for rules in all_rules:
+            if rules.write_rule and not check_rule_expr(self, rules.write_rule):
+                return False
+        return True
+
+    def is_field_writeable(self, field, all_rules=None):
+        if all_rules is None:
+            all_rules = context.get_rules(self.__class__)
+
+        if not self.is_writable(all_rules) or not self.is_field_readable(field, all_rules):
+            return False
+
+        for rules in all_rules:
+            field_rules = rules.field_write_rules.get(field.name)
+            if field_rules and not check_rule_expr(self, field_rules):
+                return False
+
+        return True
+
+    def is_deleteable(self, all_rules=None):
+        if all_rules is None:
+            all_rules = context.get_rules(self.__class__)
+
+        if not self.is_writable(all_rules):
+            return False
+
+        for rules in all_rules:
+            if rules.delete_rule and not check_rule_expr(self, rules.delete_rule):
+                return False
+
+        return True
 
     @classmethod
     def select(cls, *selection):
         query = super(SecureModel, cls).select(*selection)
-        lockdown = context.get_rules(cls)
-        if lockdown:
-            query = query.where(lockdown.read_rule)
+        all_rules = context.get_rules(cls)
+        for rules in all_rules:
+            if rules.read_rule:
+                query = query.where(rules.read_rule)
         return query
 
     def save(self, force_insert=False, only=None):
-        if not self.is_writable():
+        all_rules = context.get_rules(self.__class__)
+
+        if not self.is_writable(all_rules):
             raise LockdownException('Model not writable in current context')
 
-        rules = context.get_rules(self.__class__)
-        if rules:
-            if only is None:
-                only = []
-            for field in self._meta.get_fields():
-                if self.is_field_writeable(field):
-                    validation_fn = rules.field_validation.get(field)
-                    if validation_fn:
-                        value = getattr(self, field.name, None)
-                        if validation_fn(self, field, value):
-                            only.append(field)
-                    else:
+        if all_rules:
+            fields_to_check = self._meta.get_fields() if only is None else only
+            only = []
+            for field in fields_to_check:
+                if self.is_field_writeable(field, all_rules):
+                    append_field = True
+                    for rules in all_rules:
+                        validation_fn = rules.field_validation.get(field.name)
+                        if validation_fn:
+                            value = getattr(self, field.name, None)
+                            if not validation_fn(self, field, value):
+                                append_field = False
+                                break
+
+                    if append_field:
                         only.append(field)
 
         return super(SecureModel, self).save(force_insert, only)

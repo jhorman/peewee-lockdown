@@ -21,7 +21,7 @@ class Rules(object):
         return self
 
     def field_readable_by(self, field, expr):
-        self.field_read_rules[field] = expr
+        self.field_read_rules[field.name] = expr
         return self
 
     def writeable_by(self, expr):
@@ -29,14 +29,13 @@ class Rules(object):
         return self
 
     def field_writeable_by(self, field, expr):
-        self.field_write_rules[field] = expr
+        self.field_write_rules[field.name] = expr
         return self
 
     def field_validation(self, field, fn):
-        self.field_validation[field] = fn
+        self.field_validation[field.name] = fn
         return self
 
     def deleteable_by(self, expr):
         self.delete_rule = expr
         return self
-
