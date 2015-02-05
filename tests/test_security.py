@@ -222,15 +222,15 @@ def test_lockdown_user():
 
         assert b.is_field_writeable(Bicycle.owner) is True
 
+
 def test_transaction():
     rest_api = Role('rest_api')
     rest_api.lockdown(Bicycle).readable_by(NO_ONE).writeable_by(NO_ONE)
 
     with test_database(test_db, [User, Group, Bicycle]):
-        u = User.create(username='test')
-        u2 = User.create(username='test2')
-        g = Group.create(name='test')
-        b = Bicycle.create(owner=u, group=g)
+        u = User(username='test')
+        u2 = User(username='test2')
+        b = Bicycle()
 
         context.role = rest_api
         b.owner = u2
@@ -238,6 +238,43 @@ def test_transaction():
         with context.transaction():
             try:
                 b.owner = u2
+                assert False, 'should have thrown exception'
+            except LockdownException:
+                pass
+
+
+def test_validation():
+    rest_api = Role('rest_api')
+    rest_api.lockdown(Bicycle)\
+        .validate(Bicycle.owner, Bicycle.owner == ContextParam('user'))\
+        .validate(Bicycle.serial, lambda b, f, v: v.startswith('a'))
+
+    with test_database(test_db, [User, Group, Bicycle]):
+        b = Bicycle()
+        u1 = User(username='test')
+        u2 = User(username='test')
+
+        context.role = rest_api
+        with context.transaction():
+            try:
+                b.owner = u1
+                assert False, 'should have thrown exception'
+            except:
+                pass
+
+            context.user = u1.id
+            try:
+                b.owner = u2
+                assert False, 'should have thrown exception'
+            except:
+                pass
+
+            context.user = u1.id
+            b.owner = u1
+
+            b.serial = 'a'
+            try:
+                b.serial = 'b'
                 assert False, 'should have thrown exception'
             except LockdownException:
                 pass

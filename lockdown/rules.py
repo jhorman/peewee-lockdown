@@ -32,8 +32,8 @@ class Rules(object):
         self.field_write_rules[field.name] = expr
         return self
 
-    def field_validation(self, field, fn):
-        self.field_validation[field.name] = fn
+    def validate(self, field, expr):
+        self.field_validation[field.name] = expr
         return self
 
     def deleteable_by(self, expr):

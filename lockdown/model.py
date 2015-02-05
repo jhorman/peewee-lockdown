@@ -88,16 +88,21 @@ class SecureModel(Model):
                 return False
 
         for rules in all_rules:
-            validation_fn = rules.field_validation.get(field.name)
-            if validation_fn:
-                value = getattr(self, field.name, None)
-                if not validation_fn(self, field, value):
+            validation_expr = rules.field_validation.get(field.name)
+            if validation_expr:
+                if not self.check_field_validation(validation_expr, field, value):
                     if throw_exception:
                         raise LockdownException('Validation error for field {name}'.format(name=field.name))
                     else:
                         return False
 
         return True
+
+    def check_field_validation(self, validation_expr, field, value):
+        if hasattr(validation_expr, '__call__'):
+            return validation_expr(self, field, value)
+        else:
+            return compare_left_right(value, validation_expr.rhs)
 
     def __setattr__(self, key, value):
         if context.transaction_depth > 0:
