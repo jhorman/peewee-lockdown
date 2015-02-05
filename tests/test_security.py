@@ -2,7 +2,7 @@ from __future__ import absolute_import
 from peewee import IntegrityError
 
 from playhouse.test_utils import test_database
-from lockdown import Role
+from lockdown import Role, LockdownException
 from lockdown.context import ContextParam, context
 from lockdown.rules import NO_ONE
 from tests import test_db, Bicycle, User, Group, BaseModel
@@ -119,6 +119,11 @@ def test_insert():
     context.group = None
 
     rest_api = Role('rest_api')
+
+    rest_api.lockdown(BaseModel)\
+        .field_writeable_by(BaseModel.created, NO_ONE)\
+        .field_writeable_by(BaseModel.modified, NO_ONE)
+
     rest_api.lockdown(Bicycle) \
         .field_writeable_by(Bicycle.owner, Bicycle.owner == ContextParam('user')) \
         .field_writeable_by(Bicycle.serial, Bicycle.owner == ContextParam('user'))
@@ -142,6 +147,8 @@ def test_insert():
         Bicycle.create(owner=u, group=g, serial='1')
         b = Bicycle.get()
 
+        assert b.modified is not None
+        assert b.created is not None
         assert b.serial == '1'
         assert b.owner == u
         assert b.group == g
@@ -214,6 +221,26 @@ def test_lockdown_user():
         context.user = u.id
 
         assert b.is_field_writeable(Bicycle.owner) is True
+
+def test_transaction():
+    rest_api = Role('rest_api')
+    rest_api.lockdown(Bicycle).readable_by(NO_ONE).writeable_by(NO_ONE)
+
+    with test_database(test_db, [User, Group, Bicycle]):
+        u = User.create(username='test')
+        u2 = User.create(username='test2')
+        g = Group.create(name='test')
+        b = Bicycle.create(owner=u, group=g)
+
+        context.role = rest_api
+        b.owner = u2
+
+        with context.transaction():
+            try:
+                b.owner = u2
+                assert False, 'should have thrown exception'
+            except LockdownException:
+                pass
 
 
 def test_no_one():

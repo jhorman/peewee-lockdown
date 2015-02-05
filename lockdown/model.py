@@ -1,13 +1,13 @@
 from __future__ import absolute_import
+from peewee import Param
 
-import peewee
+from playhouse.signals import Model
 from lockdown import LockdownException
-
 from lockdown.context import context
 from lockdown.rules import NO_ONE, EVERYONE
 
 
-class SecureModel(peewee.Model):
+class SecureModel(Model):
     def is_readable(self, all_rules=None):
         if all_rules is None:
             all_rules = context.get_rules(self.__class__)
@@ -80,6 +80,34 @@ class SecureModel(peewee.Model):
                 query = query.where(rules.read_rule)
         return query
 
+    def check_field_writable(self, all_rules, field, value, throw_exception):
+        if not self.is_field_writeable(field, all_rules):
+            if throw_exception:
+                raise LockdownException('Field {name} not writable'.format(name=field.name))
+            else:
+                return False
+
+        for rules in all_rules:
+            validation_fn = rules.field_validation.get(field.name)
+            if validation_fn:
+                value = getattr(self, field.name, None)
+                if not validation_fn(self, field, value):
+                    if throw_exception:
+                        raise LockdownException('Validation error for field {name}'.format(name=field.name))
+                    else:
+                        return False
+
+        return True
+
+    def __setattr__(self, key, value):
+        if context.transaction_depth > 0:
+            field = self._meta.fields.get(key)
+            if field:
+                all_rules = context.get_rules(self.__class__)
+                self.check_field_writable(all_rules, field, value, True)
+
+        return super(SecureModel, self).__setattr__(key, value)
+
     def save(self, force_insert=False, only=None):
         all_rules = context.get_rules(self.__class__)
 
@@ -90,18 +118,9 @@ class SecureModel(peewee.Model):
             fields_to_check = self._meta.get_fields() if only is None else only
             only = []
             for field in fields_to_check:
-                if self.is_field_writeable(field, all_rules):
-                    append_field = True
-                    for rules in all_rules:
-                        validation_fn = rules.field_validation.get(field.name)
-                        if validation_fn:
-                            value = getattr(self, field.name, None)
-                            if not validation_fn(self, field, value):
-                                append_field = False
-                                break
-
-                    if append_field:
-                        only.append(field)
+                value = getattr(self, field.name, None)
+                if self.check_field_writable(all_rules, field, value, False):
+                    only.append(field)
 
         return super(SecureModel, self).save(force_insert, only)
 
@@ -135,10 +154,10 @@ def check_rule_expr(instance, rule):
 
 
 def compare_left_right(lhs, rhs):
-    if isinstance(lhs, peewee.Model):
+    if isinstance(lhs, Model):
         lhs = lhs.id
-    if isinstance(rhs, peewee.Model):
+    if isinstance(rhs, Model):
         rhs = rhs.id
-    if isinstance(rhs, peewee.Param):
+    if isinstance(rhs, Param):
         rhs = rhs.value
     return lhs == rhs
