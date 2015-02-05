@@ -1,6 +1,7 @@
 from __future__ import absolute_import
 
 from flask.ext.peewee.rest import RestResource
+from lockdown.context import lockdown_context
 
 
 class SecureRestResource(RestResource):
@@ -25,9 +26,12 @@ class SecureRestResource(RestResource):
         return super(SecureRestResource, self).check_delete(obj)
 
     def deserialize_object(self, data, instance):
-        writeable_data = {}
-        for k, v in data.items():
-            field = self.model._meta.fields.get(k)
-            if not field or instance.is_field_writeable(instance, field):
-                writeable_data[k] = v
-        return super(SecureRestResource, self).deserialize_object(writeable_data, instance)
+        all_rules = lockdown_context.get_rules(self.model)
+        if all_rules:
+            writeable_data = {}
+            for k, v in data.items():
+                field = self.model._meta.fields.get(k)
+                if not field or instance.is_field_writeable(instance, field, all_rules):
+                    writeable_data[k] = v
+            data = writeable_data
+        return super(SecureRestResource, self).deserialize_object(data, instance)
