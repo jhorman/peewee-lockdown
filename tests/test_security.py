@@ -3,15 +3,15 @@ from peewee import IntegrityError
 
 from playhouse.test_utils import test_database
 from lockdown import Role, LockdownException
-from lockdown.context import ContextParam, context
+from lockdown.context import ContextParam, lockdown_context
 from lockdown.rules import NO_ONE
 from tests import test_db, Bicycle, User, Group, BaseModel
 
 
 def test_select_security():
-    context.role = None
-    context.user = None
-    context.group = None
+    lockdown_context.role = None
+    lockdown_context.user = None
+    lockdown_context.group = None
 
     rest_api = Role('rest_api')
     rest_api.lockdown(Bicycle).readable_by(Bicycle.group == ContextParam('group'))
@@ -20,9 +20,9 @@ def test_select_security():
     assert '"group_id" = ?' not in sql
     assert len(params) == 0
 
-    context.role = rest_api
-    context.group = 10
-    context.user = 10
+    lockdown_context.role = rest_api
+    lockdown_context.group = 10
+    lockdown_context.user = 10
 
     sql, params = Bicycle.select().sql()
     assert '"group_id" = ?' in sql
@@ -30,9 +30,9 @@ def test_select_security():
 
 
 def test_readable_writable():
-    context.role = None
-    context.user = None
-    context.group = None
+    lockdown_context.role = None
+    lockdown_context.user = None
+    lockdown_context.group = None
 
     rest_api = Role('rest_api')
     ldown = rest_api.lockdown(Bicycle) \
@@ -47,32 +47,32 @@ def test_readable_writable():
         assert b.is_readable() is True
         assert b.is_writable() is True
 
-        context.role = rest_api
+        lockdown_context.role = rest_api
 
         assert b.is_readable() is False
         assert b.is_writable() is False
 
-        context.group = 10
-        context.user = 10
+        lockdown_context.group = 10
+        lockdown_context.user = 10
 
         assert b.is_readable() is False
         assert b.is_writable() is False
 
-        context.group = g.id
+        lockdown_context.group = g.id
 
         assert b.is_readable() is True
         assert b.is_writable() is False
 
-        context.user = u.id
+        lockdown_context.user = u.id
 
         assert b.is_readable() is True
         assert b.is_writable() is True
 
 
 def test_is_readable_writable_field():
-    context.role = None
-    context.user = None
-    context.group = None
+    lockdown_context.role = None
+    lockdown_context.user = None
+    lockdown_context.group = None
 
     rest_api = Role('rest_api')
 
@@ -89,34 +89,34 @@ def test_is_readable_writable_field():
         g = Group.create(name='test')
         b = Bicycle.create(owner=u, group=g)
 
-        context.role = rest_api
+        lockdown_context.role = rest_api
 
         assert b.is_field_readable(Bicycle.serial) is False
         assert b.is_field_writeable(Bicycle.serial) is False
         assert b.is_field_writeable(Bicycle.modified) is False
         assert b.is_field_writeable(Bicycle.created) is False
 
-        context.group = 10
-        context.user = 10
+        lockdown_context.group = 10
+        lockdown_context.user = 10
 
         assert b.is_field_readable(Bicycle.serial) is False
         assert b.is_field_writeable(Bicycle.serial) is False
 
-        context.group = g.id
+        lockdown_context.group = g.id
 
         assert b.is_field_readable(Bicycle.serial) is True
         assert b.is_field_writeable(Bicycle.serial) is False
 
-        context.user = u.id
+        lockdown_context.user = u.id
 
         assert b.is_field_readable(Bicycle.serial) is True
         assert b.is_field_writeable(Bicycle.serial) is True
 
 
 def test_insert():
-    context.role = None
-    context.user = None
-    context.group = None
+    lockdown_context.role = None
+    lockdown_context.user = None
+    lockdown_context.group = None
 
     rest_api = Role('rest_api')
 
@@ -133,7 +133,7 @@ def test_insert():
         g = Group.create(name='test')
 
         # set the role/user before inserting
-        context.role = rest_api
+        lockdown_context.role = rest_api
 
         try:
             Bicycle.create(owner=u, group=g, serial='1')
@@ -141,7 +141,7 @@ def test_insert():
         except IntegrityError:
             pass
 
-        context.user = u.id
+        lockdown_context.user = u.id
 
         # insert should work fine since object validates
         Bicycle.create(owner=u, group=g, serial='1')
@@ -155,9 +155,9 @@ def test_insert():
 
 
 def test_save():
-    context.role = None
-    context.user = None
-    context.group = None
+    lockdown_context.role = None
+    lockdown_context.user = None
+    lockdown_context.group = None
 
     rest_api = Role('rest_api')
     rest_api.lockdown(Bicycle) \
@@ -169,7 +169,7 @@ def test_save():
         g = Group.create(name='test')
         b = Bicycle.create(owner=u, group=g, serial='1')
 
-        context.role = rest_api
+        lockdown_context.role = rest_api
 
         b.serial = '10'
         b.save()
@@ -178,12 +178,12 @@ def test_save():
         b = Bicycle.get()
         assert b.serial is None, 'cant read this field, no group'
 
-        context.group = g.id
+        lockdown_context.group = g.id
 
         b = Bicycle.get()
         assert b.serial == '1', 'now this field can be read, should be 1 still'
 
-        context.user = u.id
+        lockdown_context.user = u.id
 
         b.serial = '10'
         b.save()
@@ -192,9 +192,9 @@ def test_save():
 
 
 def test_lockdown_user():
-    context.role = None
-    context.user = None
-    context.group = None
+    lockdown_context.role = None
+    lockdown_context.user = None
+    lockdown_context.group = None
 
     rest_api = Role('rest_api')
     rest_api.lockdown(Bicycle) \
@@ -206,11 +206,11 @@ def test_lockdown_user():
         g = Group.create(name='test')
         b = Bicycle.create(owner=u, group=g)
 
-        context.role = rest_api
+        lockdown_context.role = rest_api
 
         assert b.is_field_writeable(Bicycle.owner) is False
 
-        context.user = 10
+        lockdown_context.user = 10
 
         assert b.is_field_writeable(Bicycle.owner) is False
         b.owner = u2
@@ -218,7 +218,7 @@ def test_lockdown_user():
         b = Bicycle.get()
         assert b.owner == u, 'shouldnt save the user change'
 
-        context.user = u.id
+        lockdown_context.user = u.id
 
         assert b.is_field_writeable(Bicycle.owner) is True
 
@@ -232,10 +232,10 @@ def test_transaction():
         u2 = User(username='test2')
         b = Bicycle()
 
-        context.role = rest_api
+        lockdown_context.role = rest_api
         b.owner = u2
 
-        with context.transaction():
+        with lockdown_context.transaction():
             try:
                 b.owner = u2
                 assert False, 'should have thrown exception'
@@ -254,22 +254,22 @@ def test_validation():
         u1 = User(username='test')
         u2 = User(username='test')
 
-        context.role = rest_api
-        with context.transaction():
+        lockdown_context.role = rest_api
+        with lockdown_context.transaction():
             try:
                 b.owner = u1
                 assert False, 'should have thrown exception'
             except:
                 pass
 
-            context.user = u1.id
+            lockdown_context.user = u1.id
             try:
                 b.owner = u2
                 assert False, 'should have thrown exception'
             except:
                 pass
 
-            context.user = u1.id
+            lockdown_context.user = u1.id
             b.owner = u1
 
             b.serial = 'a'
@@ -281,9 +281,9 @@ def test_validation():
 
 
 def test_no_one():
-    context.role = None
-    context.user = None
-    context.group = None
+    lockdown_context.role = None
+    lockdown_context.user = None
+    lockdown_context.group = None
 
     rest_api = Role('rest_api')
     rest_api.lockdown(Bicycle).readable_by(NO_ONE).writeable_by(NO_ONE)
@@ -293,13 +293,13 @@ def test_no_one():
         g = Group.create(name='test')
         b = Bicycle.create(owner=u, group=g)
 
-        context.role = rest_api
+        lockdown_context.role = rest_api
 
         assert b.is_readable() is False
         assert b.is_writable() is False
 
-        context.group = g.id
-        context.user = u.id
+        lockdown_context.group = g.id
+        lockdown_context.user = u.id
 
         assert b.is_readable() is False
         assert b.is_writable() is False

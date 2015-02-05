@@ -27,6 +27,7 @@ class SecureRestResource(RestResource):
     def deserialize_object(self, data, instance):
         writeable_data = {}
         for k, v in data.items():
-            if instance.is_field_writeable(instance, k):
+            field = self.model._meta.fields.get(k)
+            if not field or instance.is_field_writeable(instance, field):
                 writeable_data[k] = v
         return super(SecureRestResource, self).deserialize_object(writeable_data, instance)

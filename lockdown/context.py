@@ -4,7 +4,7 @@ import threading
 from peewee import Param
 
 
-class Context(threading.local):
+class LockdownContext(threading.local):
     role = None
     transaction_depth = 0
 
@@ -20,7 +20,7 @@ class Context(threading.local):
             self.transaction_depth -= 1
 
 
-context = Context()
+lockdown_context = LockdownContext()
 
 
 class ContextParam(Param):
@@ -30,6 +30,6 @@ class ContextParam(Param):
 
     def __getattribute__(self, name):
         if name == 'value':
-            return getattr(context, self.context_var, None)
+            return getattr(lockdown_context, self.context_var, None)
         else:
             return super(ContextParam, self).__getattribute__(name)

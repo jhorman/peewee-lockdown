@@ -1,16 +1,16 @@
 from __future__ import absolute_import
-from peewee import Param
+from peewee import Param, SelectQuery
 
 from playhouse.signals import Model
 from lockdown import LockdownException
-from lockdown.context import context
+from lockdown.context import lockdown_context
 from lockdown.rules import NO_ONE, EVERYONE
 
 
 class SecureModel(Model):
     def is_readable(self, all_rules=None):
         if all_rules is None:
-            all_rules = context.get_rules(self.__class__)
+            all_rules = lockdown_context.get_rules(self.__class__)
 
         for rules in all_rules:
             if rules.read_rule and not check_rule_expr(self, rules.read_rule):
@@ -20,7 +20,7 @@ class SecureModel(Model):
 
     def is_field_readable(self, field, all_rules=None):
         if all_rules is None:
-            all_rules = context.get_rules(self.__class__)
+            all_rules = lockdown_context.get_rules(self.__class__)
 
         if not self.is_readable(all_rules):
             return False
@@ -34,7 +34,7 @@ class SecureModel(Model):
 
     def is_writable(self, all_rules=None):
         if all_rules is None:
-            all_rules = context.get_rules(self.__class__)
+            all_rules = lockdown_context.get_rules(self.__class__)
 
         if not self.is_readable(all_rules):
             return False
@@ -46,7 +46,7 @@ class SecureModel(Model):
 
     def is_field_writeable(self, field, all_rules=None):
         if all_rules is None:
-            all_rules = context.get_rules(self.__class__)
+            all_rules = lockdown_context.get_rules(self.__class__)
 
         if not self.is_writable(all_rules) or not self.is_field_readable(field, all_rules):
             return False
@@ -60,7 +60,7 @@ class SecureModel(Model):
 
     def is_deleteable(self, all_rules=None):
         if all_rules is None:
-            all_rules = context.get_rules(self.__class__)
+            all_rules = lockdown_context.get_rules(self.__class__)
 
         if not self.is_writable(all_rules):
             return False
@@ -73,12 +73,18 @@ class SecureModel(Model):
 
     @classmethod
     def select(cls, *selection):
-        query = super(SecureModel, cls).select(*selection)
-        all_rules = context.get_rules(cls)
+        query = cls.create_select_query(*selection)
+        all_rules = lockdown_context.get_rules(cls)
         for rules in all_rules:
             if rules.read_rule:
                 query = query.where(rules.read_rule)
+        if cls._meta.order_by:
+            query = query.order_by(*cls._meta.order_by)
         return query
+
+    @classmethod
+    def create_select_query(cls, *selection):
+        return SelectQuery(cls, *selection)
 
     def check_field_writable(self, all_rules, field, value, throw_exception):
         if not self.is_field_writeable(field, all_rules):
@@ -105,16 +111,16 @@ class SecureModel(Model):
             return compare_left_right(value, validation_expr.rhs)
 
     def __setattr__(self, key, value):
-        if context.transaction_depth > 0:
+        if lockdown_context.transaction_depth > 0:
             field = self._meta.fields.get(key)
             if field:
-                all_rules = context.get_rules(self.__class__)
+                all_rules = lockdown_context.get_rules(self.__class__)
                 self.check_field_writable(all_rules, field, value, True)
 
         return super(SecureModel, self).__setattr__(key, value)
 
     def save(self, force_insert=False, only=None):
-        all_rules = context.get_rules(self.__class__)
+        all_rules = lockdown_context.get_rules(self.__class__)
 
         if not self.is_writable(all_rules):
             raise LockdownException('Model not writable in current context')
@@ -132,7 +138,7 @@ class SecureModel(Model):
     def prepared(self):
         super(SecureModel, self).prepared()
 
-        all_rules = context.get_rules(self.__class__)
+        all_rules = lockdown_context.get_rules(self.__class__)
         if all_rules:
             if not self.is_readable(all_rules):
                 raise LockdownException('Model not readable in current context')
