@@ -32,12 +32,13 @@ class SecureModel(Model):
 
         return True
 
-    def is_creatable(self, all_rules=None):
+    @classmethod
+    def is_creatable(cls, all_rules=None):
         if all_rules is None:
-            all_rules = lockdown_context.get_rules(self.__class__)
+            all_rules = lockdown_context.get_rules(cls)
 
         for rules in all_rules:
-            if rules.create_rule and not check_rule_expr(self, rules.create_rule):
+            if rules.create_rule and not check_rule_expr(None, rules.create_rule):
                 return False
 
         return True
@@ -156,9 +157,17 @@ class SecureModel(Model):
             if not self.is_readable(all_rules):
                 raise LockdownException('Model not readable in current context')
 
+            to_remove = []
             for field in self._meta.get_fields():
                 if field.name in self._data and not self.is_field_readable(field, all_rules):
-                    del self._data[field.name]
+                    to_remove.append(field.name)
+
+            if to_remove:
+                # make a backup of the raw data so it could still be accessed for things like caching
+                self._secure_data = dict(self._data)
+                # remove the fields that are not visible
+                for field_name in to_remove:
+                    del self._data[field_name]
 
     def delete_instance(self, recursive=False, delete_nullable=False):
         if not self.is_deleteable():
@@ -185,10 +194,13 @@ def check_rule_expr(instance, rule):
         else:
             lhs_value = resolve(instance, rule.lhs)
             rhs_value = resolve(instance, rule.rhs)
+
             # special case null. this is to handle for example, when a object is being
             # created and owner is still null, and so owner can't be used to validate
-            if isinstance(rule.lhs, Field) and lhs_value is None:
+            if (isinstance(rule.lhs, Field) and lhs_value is None) or \
+                    (isinstance(rule.rhs, Field) and rhs_value is None):
                 return True
+
             return lhs_value == rhs_value
 
 
