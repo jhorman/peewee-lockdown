@@ -11,6 +11,10 @@ class LockdownContext(threading.local):
     def get_rules(self, model_class):
         return self.role.get_rules(model_class) if self.role else []
 
+    def reset(self):
+        self.role = None
+        self.transaction_depth = 0
+
     @contextmanager
     def transaction(self):
         self.transaction_depth += 1
