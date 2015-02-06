@@ -11,9 +11,7 @@ class SecureRestResource(RestResource):
         return super(SecureRestResource, self).check_get(obj)
 
     def check_put(self, obj):
-        if obj is not None:
-            return obj.is_writeable()
-        return super(SecureRestResource, self).check_put(obj)
+        return self.check_post(obj)
 
     def check_post(self, obj=None):
         if obj is not None:
