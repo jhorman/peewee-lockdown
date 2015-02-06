@@ -1,4 +1,5 @@
 from __future__ import absolute_import
+from contextlib import contextmanager
 
 from flask.ext.peewee.rest import RestResource
 from lockdown import LockdownException

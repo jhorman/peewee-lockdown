@@ -142,27 +142,25 @@ def test_insert():
         u2 = User.create(username='test')
         g = Group.create(name='test')
 
-        with lockdown_context.transaction():
-            # set the role/user before inserting
-            lockdown_context.role = rest_api
-            lockdown_context.user = u1.id
+        # set the role/user before inserting
+        lockdown_context.role = rest_api
+        lockdown_context.user = u1.id
 
-            try:
-                bwheel = BigWheel()
-                bwheel.owner = u2
-                bwheel.group = g
-                bwheel.serial = '1'
-                bwheel.save()
-                assert False, 'should have failed'
-            except LockdownException:
-                pass
-
-            # insert should work fine since object validates
+        try:
             bwheel = BigWheel()
-            bwheel.owner = u1
+            bwheel.owner = u2
             bwheel.group = g
             bwheel.serial = '1'
-            bwheel.save()
+            assert False, 'should have failed'
+        except LockdownException:
+            pass
+
+        # insert should work fine since object validates
+        bwheel = BigWheel()
+        bwheel.owner = u1
+        bwheel.group = g
+        bwheel.serial = '1'
+        bwheel.save()
 
         b = BigWheel.get()
         assert b.modified is not None
@@ -190,10 +188,13 @@ def test_save():
 
         lockdown_context.role = rest_api
 
-        b.serial = '10'
-        b.save()
+        try:
+            b.serial = '10'
+            assert False, 'should have thrown'
+        except:
+            pass
 
-        assert b.serial == '10'
+        assert b.serial == '1'
         b = Bicycle.get()
         assert b.serial is None, 'cant read this field, no group'
 
@@ -233,34 +234,14 @@ def test_lockdown_user():
         lockdown_context.user = 10
 
         assert b.is_field_writeable(Bicycle.owner) is False
-        b.owner = u2
-        b.save()
-        b = Bicycle.get()
-        assert b.owner == u, 'shouldnt save the user change'
+        try:
+            b.owner = u2
+            assert False, 'should have thrown'
+        except:
+            pass
 
         lockdown_context.user = u.id
-
         assert b.is_field_writeable(Bicycle.owner) is True
-
-@with_setup(setup)
-def test_transaction():
-    rest_api = Role('rest_api')
-    rest_api.lockdown(Bicycle).readable_by(NO_ONE).writeable_by(NO_ONE)
-
-    with test_database(test_db, [User, Group, Bicycle]):
-        u = User.create(username='test')
-        u2 = User.create(username='test2')
-        b = Bicycle.create()
-
-        lockdown_context.role = rest_api
-        b.owner = u2
-
-        with lockdown_context.transaction():
-            try:
-                b.owner = u2
-                assert False, 'should have thrown exception'
-            except LockdownException:
-                pass
 
 @with_setup(setup)
 def test_validation():
@@ -276,29 +257,28 @@ def test_validation():
         u2 = User.create(username='test')
 
         lockdown_context.role = rest_api
-        with lockdown_context.transaction():
-            try:
-                b.owner = u1
-                assert False, 'should have thrown exception'
-            except:
-                pass
-
-            lockdown_context.user = u1.id
-            try:
-                b.owner = u2
-                assert False, 'should have thrown exception'
-            except:
-                pass
-
-            lockdown_context.user = u1.id
+        try:
             b.owner = u1
+            assert False, 'should have thrown exception'
+        except:
+            pass
 
-            b.serial = 'a'
-            try:
-                b.serial = 'b'
-                assert False, 'should have thrown exception'
-            except LockdownException:
-                pass
+        lockdown_context.user = u1.id
+        try:
+            b.owner = u2
+            assert False, 'should have thrown exception'
+        except:
+            pass
+
+        lockdown_context.user = u1.id
+        b.owner = u1
+
+        b.serial = 'a'
+        try:
+            b.serial = 'b'
+            assert False, 'should have thrown exception'
+        except LockdownException:
+            pass
 
 @with_setup(setup)
 def test_no_one():
@@ -339,30 +319,29 @@ def test_custom_role_check():
 
         lockdown_context.role = rest_api
 
-        with lockdown_context.transaction():
-            try:
-                b.serial = '1'
-                assert False, 'should have failed'
-            except LockdownException:
-                pass
-
-            lockdown_context.group = g.id
-
-            try:
-                b.serial = '1'
-                assert False, 'should have failed'
-            except LockdownException:
-                pass
-
-            lockdown_context.custom_role = 'user'
-            try:
-                b.serial = '1'
-                assert False, 'should have failed'
-            except LockdownException:
-                pass
-
-            lockdown_context.custom_role = 'admin'
+        try:
             b.serial = '1'
+            assert False, 'should have failed'
+        except LockdownException:
+            pass
+
+        lockdown_context.group = g.id
+
+        try:
+            b.serial = '1'
+            assert False, 'should have failed'
+        except LockdownException:
+            pass
+
+        lockdown_context.custom_role = 'user'
+        try:
+            b.serial = '1'
+            assert False, 'should have failed'
+        except LockdownException:
+            pass
+
+        lockdown_context.custom_role = 'admin'
+        b.serial = '1'
 
 
 @with_setup(setup)
@@ -386,26 +365,25 @@ def test_combined_roles():
         lockdown_context.group = g1.id
         lockdown_context.custom_role = 'admin'
 
-        with lockdown_context.transaction():
+        b.serial = '1'
+
+        # make sure the group rule was inherited from server_api
+        lockdown_context.group = g2.id
+        try:
             b.serial = '1'
+            assert False, 'should have failed'
+        except:
+            pass
 
-            # make sure the group rule was inherited from server_api
-            lockdown_context.group = g2.id
-            try:
-                b.serial = '1'
-                assert False, 'should have failed'
-            except:
-                pass
-
-            # set group to the correct group, but shouldn't be able to set created
-            # since this is still the rest_api role
-            lockdown_context.group = g1.id
-            try:
-                b.created = datetime.utcnow()
-                assert False, 'should have failed'
-            except:
-                pass
-
-            # server_api can set created
-            lockdown_context.role = server_api
+        # set group to the correct group, but shouldn't be able to set created
+        # since this is still the rest_api role
+        lockdown_context.group = g1.id
+        try:
             b.created = datetime.utcnow()
+            assert False, 'should have failed'
+        except:
+            pass
+
+        # server_api can set created
+        lockdown_context.role = server_api
+        b.created = datetime.utcnow()

@@ -8,6 +8,11 @@ from lockdown.rules import NO_ONE, EVERYONE
 
 
 class SecureModel(Model):
+    def __init__(self, *args, **kwargs):
+        self._secure_data = {}
+        self._change_contexts = {}
+        super(SecureModel, self).__init__(*args, **kwargs)
+
     def is_readable(self, all_rules=None):
         if all_rules is None:
             all_rules = lockdown_context.get_rules(self.__class__)
@@ -122,11 +127,25 @@ class SecureModel(Model):
             return resolve(self, value) == resolve(self, validation_expr.rhs)
 
     def __setattr__(self, key, value):
-        if lockdown_context.transaction_depth > 0:
-            field = self._meta.fields.get(key)
-            if field:
+        field = self._meta.fields.get(key)
+
+        if field:
+            # if the object doesn't yet have an id, and this is the id field
+            # turn off validation. this ensures that peewee queries aren't
+            # self validating since the first field a query will fill is id.
+            # once the query is complete, prepared will turn validation back on
+            if not self.get_id() and field.primary_key:
+                self._validate = False
+
+            # if validation is enabled check that the field is writable
+            if getattr(self, '_validate', True):
                 all_rules = lockdown_context.get_rules(self.__class__)
                 self.check_field_writable(all_rules, field, value, True)
+
+            # capture the role doing the setting. this lets different fields
+            # get set by different contexts
+            if lockdown_context.role:
+                self._change_contexts[key] = lockdown_context.role
 
         return super(SecureModel, self).__setattr__(key, value)
 
@@ -144,13 +163,19 @@ class SecureModel(Model):
             only = []
             for field in fields_to_check:
                 value = getattr(self, field.name) if field.name in self._data else None
-                if self.check_field_writable(all_rules, field, value, False):
+                # check if this field has a change context set. if so that means
+                # setattr already validated the change and it can just be accepted here.
+                # this is useful so one context can set some fields, then maybe a server
+                # context could set a field like `modified`.
+                change_context = self._change_contexts.get(field.name)
+                if change_context or self.check_field_writable(all_rules, field, value, False):
                     only.append(field)
 
         return super(SecureModel, self).save(force_insert, only)
 
     def prepared(self):
         super(SecureModel, self).prepared()
+        self._validate = True
 
         all_rules = lockdown_context.get_rules(self.__class__)
         if all_rules:
