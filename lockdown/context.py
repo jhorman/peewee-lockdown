@@ -16,6 +16,15 @@ class LockdownContext(threading.local):
         self.transaction_depth = 0
 
     @contextmanager
+    def as_role(self, role):
+        old_role = self.role
+        self.role = role
+        try:
+            yield
+        finally:
+            self.role = old_role
+
+    @contextmanager
     def transaction(self):
         self.transaction_depth += 1
         try:

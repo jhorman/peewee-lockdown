@@ -38,7 +38,6 @@ class SecureRestResource(RestResource):
 
         return data
 
-
     def deserialize_object(self, data, instance):
         all_rules = lockdown_context.get_rules(self.model)
         if all_rules:
