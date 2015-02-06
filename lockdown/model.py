@@ -32,6 +32,16 @@ class SecureModel(Model):
 
         return True
 
+    def is_creatable(self, all_rules=None):
+        if all_rules is None:
+            all_rules = lockdown_context.get_rules(self.__class__)
+
+        for rules in all_rules:
+            if rules.create_rule and not check_rule_expr(self, rules.create_rule):
+                return False
+
+        return True
+
     def is_writable(self, all_rules=None):
         if all_rules is None:
             all_rules = lockdown_context.get_rules(self.__class__)
@@ -122,6 +132,9 @@ class SecureModel(Model):
     def save(self, force_insert=False, only=None):
         all_rules = lockdown_context.get_rules(self.__class__)
 
+        if self.get_id() is None and not self.is_creatable(all_rules):
+            raise LockdownException('Model not creatable in current context')
+
         if not self.is_writable(all_rules):
             raise LockdownException('Model not writable in current context')
 
@@ -163,6 +176,12 @@ def check_rule_expr(instance, rule):
     else:
         if rule.op == 'and':
             return check_rule_expr(instance, rule.lhs) and check_rule_expr(instance, rule.rhs)
+        elif rule.op == 'or':
+            return check_rule_expr(instance, rule.lhs) or check_rule_expr(instance, rule.rhs)
+        elif rule.op == 'in':
+            lhs_value = resolve(instance, rule.lhs)
+            list = [resolve(instance, item) for item in rule.rhs]
+            return lhs_value in list
         else:
             lhs_value = resolve(instance, rule.lhs)
             rhs_value = resolve(instance, rule.rhs)

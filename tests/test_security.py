@@ -1,7 +1,6 @@
 from __future__ import absolute_import
 from datetime import datetime
 from nose import with_setup
-from peewee import IntegrityError
 
 from playhouse.test_utils import test_database
 from lockdown import Role, LockdownException
