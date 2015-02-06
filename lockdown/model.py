@@ -1,5 +1,5 @@
 from __future__ import absolute_import
-from peewee import Param, SelectQuery
+from peewee import Param, SelectQuery, Field
 
 from playhouse.signals import Model
 from lockdown import LockdownException
@@ -108,7 +108,7 @@ class SecureModel(Model):
         if hasattr(validation_expr, '__call__'):
             return validation_expr(self, field, value)
         else:
-            return compare_left_right(value, validation_expr.rhs)
+            return resolve(self, value) == resolve(self, validation_expr.rhs)
 
     def __setattr__(self, key, value):
         if lockdown_context.transaction_depth > 0:
@@ -129,7 +129,7 @@ class SecureModel(Model):
             fields_to_check = self._meta.get_fields() if only is None else only
             only = []
             for field in fields_to_check:
-                value = getattr(self, field.name, None)
+                value = getattr(self, field.name) if field.name in self._data else None
                 if self.check_field_writable(all_rules, field, value, False):
                     only.append(field)
 
@@ -161,14 +161,23 @@ def check_rule_expr(instance, rule):
     elif hasattr(rule, '__call__'):
         return rule(instance)
     else:
-        return compare_left_right(getattr(instance, rule.lhs.name), rule.rhs)
+        if rule.op == 'and':
+            return check_rule_expr(instance, rule.lhs) and check_rule_expr(instance, rule.rhs)
+        else:
+            lhs_value = resolve(instance, rule.lhs)
+            rhs_value = resolve(instance, rule.rhs)
+            # special case null. this is to handle for example, when a object is being
+            # created and owner is still null, and so owner can't be used to validate
+            if isinstance(rule.lhs, Field) and lhs_value is None:
+                return True
+            return lhs_value == rhs_value
 
 
-def compare_left_right(lhs, rhs):
-    if isinstance(lhs, Model):
-        lhs = lhs.id
-    if isinstance(rhs, Model):
-        rhs = rhs.id
-    if isinstance(rhs, Param):
-        rhs = rhs.value
-    return lhs == rhs
+def resolve(instance, value):
+    if isinstance(value, Field):
+        return resolve(instance, getattr(instance, value.name) if value.name in instance._data else None)
+    if isinstance(value, Model):
+        return value.id
+    if isinstance(value, Param):
+        return resolve(instance, value.value)
+    return value

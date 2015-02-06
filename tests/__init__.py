@@ -24,6 +24,12 @@ class Group(BaseModel):
 
 
 class Bicycle(BaseModel):
-    owner = peewee.ForeignKeyField(User, related_name='bikes')
-    group = peewee.ForeignKeyField(Group, related_name='bikes')
+    owner = peewee.ForeignKeyField(User, related_name='bikes', null=True)
+    group = peewee.ForeignKeyField(Group, related_name='bikes', null=True)
+    serial = peewee.CharField(null=True)
+
+
+class BigWheel(BaseModel):
+    owner = peewee.ForeignKeyField(User, related_name='bigwheels', null=False)
+    group = peewee.ForeignKeyField(Group, related_name='bigwheels', null=False)
     serial = peewee.CharField(null=True)
